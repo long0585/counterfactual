@@ -14,6 +14,7 @@ parser.add_argument('--interval_size', type=int, default=1, help='Interval size'
 parser.add_argument('--gpt_engine', type=str, default='gpt-4o', help='GPT-4 engine')
 parser.add_argument('--alphabet', type=str, default='a b c d e f g h i j k l m n o p q r s t u v w x y z', help='Choose custom alphabet')
 parser.add_argument('--effort', type=str, help='Effort level for gpt5')
+parser.add_argument('--trials', type=int, default=10, help='Number of trials')
 args = parser.parse_args()
 
 alphabet_suffix = args.alphabet.replace(" ", "")
@@ -33,9 +34,10 @@ custom_alphabet = args.alphabet
 alphabet_prompt = "Let’s solve a puzzle problem involving the following fictional alphabet:\n\n[" + custom_alphabet + "]\n\nHere is the problem:\n\n"
 
 # Evaluate
-N_trials_per_prob_type = 5
+N_trials_per_prob_type = args.trials
 all_prob_type_responses = []
 all_prob_type_completions = []
+start_time = time.time()
 for p in range(N_prob_types):
     print('Problem type ' + str(p+1) + ' of ' + str(N_prob_types) + '...')
     prob_type_responses = []
@@ -55,7 +57,7 @@ for p in range(N_prob_types):
         response = ''
         while len(response) == 0:
             try:
-                if args.gpt_engine != 'gpt-5':
+                if not args.gpt_engine.startswith('gpt-5'):
                     completion = client.responses.create(
                                     model=args.gpt_engine,
                                     temperature=0,
@@ -79,9 +81,10 @@ for p in range(N_prob_types):
     all_prob_type_responses.append(prob_type_responses)
     all_prob_type_completions.append(prob_type_completions)
 
+avg_time = (time.time() - start_time) / (N_trials_per_prob_type * N_prob_types) # avg time/problem in seconds
 # Save results
-if args.gpt_engine != "gpt-5":
+if not args.gpt_engine.startswith("gpt-5"):
     save_fname = './test_outputs/' + args.gpt_engine + '_' + alphabet_suffix + '_int' + str(args.interval_size) + '_results.npz'
 else:
     save_fname = './test_outputs/' + args.gpt_engine + '_' + effort_level + '_' + alphabet_suffix + '_int' + str(args.interval_size) + '_results.npz'
-np.savez(save_fname, all_prob_type_responses=all_prob_type_responses, all_prob_type_completions=all_prob_type_completions)
+np.savez(save_fname, all_prob_type_responses=all_prob_type_responses, all_prob_type_completions=all_prob_type_completions, avg_time=avg_time)

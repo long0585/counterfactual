@@ -27,7 +27,7 @@ alphabet_suffix = args.alphabet.replace(" ", "")
 effort_level = args.effort
 
 # Load data
-if args.gpt_engine != "gpt-5":
+if not args.gpt_engine.startswith("gpt-5"):
     data_fname = './test_outputs/' + args.gpt_engine + '_' + alphabet_suffix + '_int' + str(args.interval_size)
 else:
     data_fname = './test_outputs/' + args.gpt_engine + '_' + effort_level + '_' + alphabet_suffix + '_int' + str(args.interval_size)
@@ -41,6 +41,8 @@ if args.interval_size == 1:
 elif args.interval_size == 2:
     all_prob = np.load('./all_prob_int2/all_prob_' + alphabet_suffix + '_interval2.npz', allow_pickle=True)['all_prob']
 prob_types = builtins.list(all_prob.item().keys())
+# Avg time per problem (seconds)
+avg_time = np.load(data_fname)['avg_time'].item()
 
 # Calculate performance
 all_prob_type_correct_pred = []
@@ -110,12 +112,13 @@ plt.ylim([0,1])
 plt.yticks([0,0.2,0.4,0.6,0.8,1],['0','0.2','0.4','0.6','0.8','1'], fontsize=plot_fontsize)
 plt.ylabel('Accuracy', fontsize=axis_label_fontsize)
 plt.xticks(x_points, np.array(all_prob_type_names), fontsize=plot_fontsize)
-plt.xlabel('Transformation type', fontsize=axis_label_fontsize)
-plt.legend([args.gpt_engine],fontsize=plot_fontsize,frameon=False)
+plt.xlabel('Problem type', fontsize=axis_label_fontsize)
+plt.legend([args.gpt_engine],fontsize=plot_fontsize,frameon=False, bbox_to_anchor=(0.8, 1.02))
+
 hide_top_right(ax)
-plt.title("Alphabet:" + args.alphabet + '\n' + "Trials per problem type: " + str(N_trials_per_prob_type) + '\n' + "Interval size: " + str(args.interval_size))
+plt.title("Alphabet:" + args.alphabet + '\n' + "Trials per problem type: " + str(N_trials_per_prob_type) + '\n' + "Interval size: " + str(args.interval_size) + '\n' + "Avg time/problem (s): " + str(round(avg_time, 2)))
 plt.tight_layout()
-if args.gpt_engine != "gpt-5": 
+if not args.gpt_engine.startswith('gpt-5'): 
     results_filename_png = "acc" + "_" + args.alphabet.replace(" ", "") + ".png"
 else:
     results_filename_png = effort_level + "_" + args.alphabet.replace(" ", "") + ".png"
@@ -129,8 +132,8 @@ upper_err =  ci_upper - overall_acc
 overall_err = np.array([lower_err, upper_err])
 print('Overall accuracy = ' + str(overall_acc))
 # Save results
-if args.gpt_engine != "gpt-5":
+if not args.gpt_engine.startswith("gpt-5"):
     results_filename_npz = "acc" + "_" + args.alphabet.replace(" ", "") + ".npz"
 else:
     results_filename_npz = effort_level + "_" + args.alphabet.replace(" ", "") + ".npz"
-np.savez(results_dir + results_filename_npz, all_acc=all_acc, all_err=all_err, overall_acc=overall_acc, overall_err=overall_err, ind_trial_results=ind_trial_results, num_trials=N_trials_per_prob_type)
+np.savez(results_dir + results_filename_npz, all_acc=all_acc, all_err=all_err, overall_acc=overall_acc, overall_err=overall_err, ind_trial_results=ind_trial_results, num_trials=N_trials_per_prob_type, avg_time=avg_time)
