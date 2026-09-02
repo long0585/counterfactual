@@ -27,13 +27,13 @@ with open(args.gpt_engine + "_alphabets.txt", "r") as f:
 gpt_results = {}
 for name, alph in alphabet_map.items():
     if args.interval_size == 1:
-        if args.gpt_engine == "gpt-5":
+        if args.gpt_engine.startswith('gpt-5'):
             path = "./int1_results/" + args.gpt_engine + "_" + alph + "_int1/" + args.effort + "_" + alph + ".npz"
         else:
             path = "./int1_results/" + args.gpt_engine + "_" + alph + "_int1/" + "acc_" + alph + ".npz"
         gpt_results[name] = np.load(path)
     elif args.interval_size == 2:
-        if args.gpt_engine == "gpt-5":
+        if args.gpt_engine.startswith("gpt-5"):
             path = "./int2_results/" + args.gpt_engine + "_" + alph + "_int2/" + args.effort + "_" + alph + ".npz"
         else:
             path = "./int2_results/" + args.gpt_engine + "_" + alph + "_int2/" + "acc_" + alph + ".npz"
@@ -68,7 +68,7 @@ gpt_err = [result['overall_err'][0] for result in gpt_results.values()]
 
 # Plot parameters
 total_bar_width = 0.8
-ind_bar_width = total_bar_width / 5
+ind_bar_width = total_bar_width / 2
 colors = ['powderblue', 'darkmagenta', 'salmon', 'mediumseagreen', 'royalblue']
 plot_fontsize = 14
 title_fontsize = 16
@@ -79,32 +79,27 @@ N_cond = 6
 x_points = np.arange(N_cond)
 # Interval size = 1
 ax = plt.subplot(111)
-plt.bar(x_points - (ind_bar_width * 2), gpt_results["FORWARD"]['all_acc'], yerr=gpt_results["FORWARD"]['all_err'], color=colors[0], edgecolor='black', width=ind_bar_width, ecolor='gray')
-plt.bar(x_points - (ind_bar_width * 1), gpt_results["BACKWARD"]['all_acc'], yerr=gpt_results["BACKWARD"]['all_err'], color=colors[1], edgecolor='black', width=ind_bar_width, ecolor='gray')
-plt.bar(x_points + (ind_bar_width * 0), gpt_results["RANDOM"]['all_acc'], yerr=gpt_results["RANDOM"]['all_err'], color=colors[3], edgecolor='black', width=ind_bar_width, ecolor='gray')
-if args.gpt_engine == "gpt-4o":
-    plt.bar(x_points + (ind_bar_width * 1), gpt_results["GROUPS"]['all_acc'], yerr=gpt_results["GROUPS"]['all_err'], color=colors[2], edgecolor='black', width=ind_bar_width, ecolor='gray')
-if args.gpt_engine == "gpt-4o":
-    plt.bar(x_points + (ind_bar_width * 2), gpt_results["NEARRANDOM"]['all_acc'], yerr=gpt_results["NEARRANDOM"]['all_err'], color=colors[4], edgecolor='black', width=ind_bar_width, ecolor='gray')
+plt.bar(x_points + (ind_bar_width * 1/2), gpt_results["FORWARD"]['all_acc'], yerr=gpt_results["FORWARD"]['all_err'], color=colors[0], edgecolor='black', width=ind_bar_width, ecolor='gray')
+plt.bar(x_points - (ind_bar_width * 1/2), gpt_results["RANDOM"]['all_acc'], yerr=gpt_results["RANDOM"]['all_err'], color=colors[1], edgecolor='black', width=ind_bar_width, ecolor='gray')
 plt.ylim([0,1])
 plt.yticks([0,0.2,0.4,0.6,0.8,1],['0','0.2','0.4','0.6','0.8','1'], fontsize=plot_fontsize)
 plt.ylabel('Accuracy', fontsize=axis_label_fontsize)
 plt.xticks(x_points, all_prob_type_names, fontsize=9.5)
-plt.xlabel('Transformation type', fontsize=axis_label_fontsize)
+plt.xlabel('Problem type', fontsize=axis_label_fontsize)
 if args.gpt_engine == 'gpt-4o':
-    plt.title('Interval size = ' + str(args.interval_size) + '\n' + "Trials per problem type: " + str(N_trials_per_problem_type), fontsize=title_fontsize)
-elif args.gpt_engine == 'gpt-5':
-    plt.title('Interval size = ' + str(args.interval_size) + '\n' + "Effort: " + args.effort + '\n' + "Trials per problem type: " + str(N_trials_per_problem_type), fontsize=title_fontsize)
+    plt.title('GPT model: ' + args.gpt_engine + '\nInterval size = ' + str(args.interval_size) + '\n' + "Trials per problem type: " + str(N_trials_per_problem_type), fontsize=title_fontsize)
+elif args.gpt_engine.startswith('gpt-5'):
+    plt.title('GPT model: ' + args.gpt_engine + '\nInterval size = ' + str(args.interval_size) + '\n' + "Effort: " + args.effort + '\n' + "Trials per problem type: " + str(N_trials_per_problem_type), fontsize=title_fontsize)
 plt.legend([name.lower() for name in gpt_results.keys()],fontsize=plot_fontsize,frameon=False, bbox_to_anchor=(1.1, 1))
 hide_top_right(ax)
 if args.interval_size == 1:
-    if args.gpt_engine == 'gpt-5':
-        plt.savefig('./gpt5_int1_combined_results.png', dpi=300, bbox_inches="tight")
+    if args.gpt_engine.startswith('gpt-5'):
+        plt.savefig('./' + args.gpt_engine + '_int1_' + args.effort + '_combined_results.png', dpi=300, bbox_inches="tight")
     elif args.gpt_engine == 'gpt-4o':
         plt.savefig('./gpt4o_int1_combined_results.png', dpi=300, bbox_inches="tight")
 elif args.interval_size == 2:
-    if args.gpt_engine == 'gpt-5':
-        plt.savefig('./gpt5_int2_combined_results.png', dpi=300, bbox_inches="tight")
+    if args.gpt_engine.startswith('gpt-5'):
+        plt.savefig('./' + args.gpt_engine + '_int2_' + args.effort + '_combined_results.png', dpi=300, bbox_inches="tight")
     elif args.gpt_engine == 'gpt-4o':
         plt.savefig('./gpt4o_int2_combined_results.png', dpi=300, bbox_inches="tight")
 plt.close()

@@ -15,6 +15,7 @@ parser.add_argument('--gpt_engine', type=str, default='gpt-4o', help='GPT-4 engi
 parser.add_argument('--alphabet', type=str, default='a b c d e f g h i j k l m n o p q r s t u v w x y z', help='Choose custom alphabet')
 parser.add_argument('--effort', type=str, help='Effort level for gpt5')
 parser.add_argument('--trials', type=int, default=10, help='Number of trials')
+parser.add_argument('--composite', action='store_true', default=False)
 args = parser.parse_args()
 
 alphabet_suffix = args.alphabet.replace(" ", "")
@@ -22,11 +23,20 @@ effort_level = args.effort
 
 # Load all problems
 if args.interval_size == 1:
-    all_prob = np.load('./all_prob_int1/all_prob_' + alphabet_suffix + '_interval1.npz', allow_pickle=True)['all_prob']
+    if args.composite:
+        all_prob = np.load('./all_prob_int1/all_prob_composite_' + alphabet_suffix + '_interval1.npz', allow_pickle=True)['all_prob']
+    else:
+        all_prob = np.load('./all_prob_int1/all_prob_' + alphabet_suffix + '_interval1.npz', allow_pickle=True)['all_prob']
 elif args.interval_size == 2:
-    all_prob = np.load('./all_prob_int2/all_prob_' + alphabet_suffix + '_interval2.npz', allow_pickle=True)['all_prob']
+    if args.composite:
+        all_prob = np.load('./all_prob_int2/all_prob_composite_' + alphabet_suffix + '_interval2.npz', allow_pickle=True)['all_prob']
+    else:
+        all_prob = np.load('./all_prob_int2/all_prob_' + alphabet_suffix + '_interval2.npz', allow_pickle=True)['all_prob']
 prob_types = list(all_prob.item().keys())
-prob_types = prob_types[:6]
+if args.composite:
+    prob_types = prob_types[:3]
+else:
+    prob_types = prob_types[:6]
 N_prob_types = len(prob_types)
 
 # Synthetic alphabet and prompt
@@ -84,7 +94,13 @@ for p in range(N_prob_types):
 avg_time = (time.time() - start_time) / (N_trials_per_prob_type * N_prob_types) # avg time/problem in seconds
 # Save results
 if not args.gpt_engine.startswith("gpt-5"):
-    save_fname = './test_outputs/' + args.gpt_engine + '_' + alphabet_suffix + '_int' + str(args.interval_size) + '_results.npz'
+    if args.composite:
+        save_fname = './test_outputs_composite/' + args.gpt_engine + '_' + alphabet_suffix + '_int' + str(args.interval_size) + '_results.npz'
+    else:
+        save_fname = './test_outputs/' + args.gpt_engine + '_' + alphabet_suffix + '_int' + str(args.interval_size) + '_results.npz'
 else:
-    save_fname = './test_outputs/' + args.gpt_engine + '_' + effort_level + '_' + alphabet_suffix + '_int' + str(args.interval_size) + '_results.npz'
+    if args.composite:
+        save_fname = './test_outputs_composite/' + args.gpt_engine + '_' + effort_level + '_' + alphabet_suffix + '_int' + str(args.interval_size) + '_results.npz'
+    else:
+        save_fname = './test_outputs/' + args.gpt_engine + '_' + effort_level + '_' + alphabet_suffix + '_int' + str(args.interval_size) + '_results.npz'
 np.savez(save_fname, all_prob_type_responses=all_prob_type_responses, all_prob_type_completions=all_prob_type_completions, avg_time=avg_time)
