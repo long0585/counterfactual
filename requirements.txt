@@ -1,0 +1,6 @@
+# Responses API support is required by the HF Router profiles.
+openai>=1.66,<3
+numpy>=1.24
+pandas>=2.0
+matplotlib>=3.7
+statsmodels>=0.14

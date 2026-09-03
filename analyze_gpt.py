@@ -5,6 +5,8 @@ import builtins
 import argparse
 import os
 
+from engine import PROVIDER_PROFILES, result_model_label
+
 def check_path(path):
     if not os.path.exists(path):
         os.mkdir(path)
@@ -18,7 +20,8 @@ def hide_top_right(ax):
 # Settings
 parser = argparse.ArgumentParser()
 parser.add_argument('--interval_size', type=int, default=1, help='Interval size')
-parser.add_argument('--gpt_engine', type=str, default='gpt-4o', help='GPT-4 engine')
+parser.add_argument('--gpt_engine', '--model', dest='gpt_engine', type=str, default='gpt-4o', help='Model ID')
+parser.add_argument('--provider', choices=sorted(PROVIDER_PROFILES), default='openai', help='API provider profile used for the run')
 parser.add_argument('--alphabet', type=str, default='a b c d e f g h i j k l m n o p q r s t u v w x y z', help='Choose custom alphabet')
 parser.add_argument('--effort', type=str, help='Effort level for gpt5')
 parser.add_argument('--composite', action='store_true', default=False)
@@ -26,18 +29,13 @@ args = parser.parse_args()
 
 alphabet_suffix = args.alphabet.replace(" ", "")
 effort_level = args.effort
+model_label = result_model_label(args.provider, args.gpt_engine, effort_level)
 
 # Load data
-if not args.gpt_engine.startswith("gpt-5"):
-    if args.composite:
-        data_fname = './test_outputs_composite/' + args.gpt_engine + '_' + alphabet_suffix + '_int' + str(args.interval_size)
-    else:
-        data_fname = './test_outputs/' + args.gpt_engine + '_' + alphabet_suffix + '_int' + str(args.interval_size)
+if args.composite:
+    data_fname = './test_outputs_composite/' + model_label + '_' + alphabet_suffix + '_int' + str(args.interval_size)
 else:
-    if args.composite:
-        data_fname = './test_outputs_composite/' + args.gpt_engine + '_' + effort_level + '_' + alphabet_suffix + '_int' + str(args.interval_size)
-    else:
-        data_fname = './test_outputs/' + args.gpt_engine + '_' + effort_level + '_' + alphabet_suffix + '_int' + str(args.interval_size)
+    data_fname = './test_outputs/' + model_label + '_' + alphabet_suffix + '_int' + str(args.interval_size)
 data_fname += '_results.npz'
 all_responses = np.load(data_fname)['all_prob_type_responses']
 N_prob_types = all_responses.shape[0]
@@ -107,14 +105,14 @@ ind_trial_results = np.array(ind_trial_results)
 # Create directory for results
 if args.interval_size == 1:
     if args.composite:
-        results_dir = './int1_results_composite/' + args.gpt_engine + '_' + alphabet_suffix + '_int' + str(args.interval_size)
+        results_dir = './int1_results_composite/' + model_label + '_' + alphabet_suffix + '_int' + str(args.interval_size)
     else:
-        results_dir = './int1_results/' + args.gpt_engine + '_' + alphabet_suffix + '_int' + str(args.interval_size)
+        results_dir = './int1_results/' + model_label + '_' + alphabet_suffix + '_int' + str(args.interval_size)
 elif args.interval_size == 2:
     if args.composite:
-        results_dir = './int2_results_composite/' + args.gpt_engine + '_' + alphabet_suffix + '_int' + str(args.interval_size)
+        results_dir = './int2_results_composite/' + model_label + '_' + alphabet_suffix + '_int' + str(args.interval_size)
     else:
-        results_dir = './int2_results/' + args.gpt_engine + '_' + alphabet_suffix + '_int' + str(args.interval_size)
+        results_dir = './int2_results/' + model_label + '_' + alphabet_suffix + '_int' + str(args.interval_size)
 results_dir += '/'
 check_path(results_dir)
 

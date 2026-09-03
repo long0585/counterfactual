@@ -1,2 +1,6 @@
 UROP_proposal.pdf
 test_old.py
+.env
+.venv/
+*.pyc
+__pycache__/

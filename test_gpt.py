@@ -1,22 +1,60 @@
-from openai import OpenAI
 import numpy as np
-import builtins
 import argparse
+import json
+import os
 import time
 
-# Set up OpenAI client
-client = OpenAI()
-
+from engine import ModelEngine, PROVIDER_PROFILES, ProviderConfig, result_model_label
 
 # Settings
 parser = argparse.ArgumentParser()
 parser.add_argument('--interval_size', type=int, default=1, help='Interval size')
-parser.add_argument('--gpt_engine', type=str, default='gpt-4o', help='GPT-4 engine')
+parser.add_argument('--gpt_engine', '--model', dest='gpt_engine', type=str, default=None,
+                    help='Model ID (defaults to the selected provider profile)')
+parser.add_argument('--provider', choices=sorted(PROVIDER_PROFILES), default='openai',
+                    help='API provider profile')
+parser.add_argument('--base_url', '--base-url', dest='base_url',
+                    help='Override the provider endpoint')
+parser.add_argument('--api_key_env', '--api-key-env', dest='api_key_env',
+                    help='Name of the environment variable containing the API key')
 parser.add_argument('--alphabet', type=str, default='a b c d e f g h i j k l m n o p q r s t u v w x y z', help='Choose custom alphabet')
-parser.add_argument('--effort', type=str, help='Effort level for gpt5')
+parser.add_argument('--effort', type=str, help='Provider-supported reasoning effort')
+parser.add_argument('--max_output_tokens', '--max-output-tokens', dest='max_output_tokens',
+                    type=int, help='Maximum generated tokens (mapped per provider)')
+parser.add_argument('--extra_body_json', '--extra-body-json', dest='extra_body_json',
+                    help='Provider-specific JSON object merged into extra_body')
+parser.add_argument('--timeout', type=float, default=120.0, help='API timeout in seconds')
+parser.add_argument('--max_retries', '--max-retries', dest='max_retries', type=int, default=3,
+                    help='Maximum attempts per puzzle (default: 3)')
+parser.add_argument('--retry_delay', '--retry-delay', dest='retry_delay', type=float, default=5.0,
+                    help='Seconds between attempts')
 parser.add_argument('--trials', type=int, default=10, help='Number of trials')
 parser.add_argument('--composite', action='store_true', default=False)
 args = parser.parse_args()
+
+if args.max_retries < 1:
+    parser.error('--max-retries must be at least 1')
+
+try:
+    extra_body = json.loads(args.extra_body_json) if args.extra_body_json else None
+except json.JSONDecodeError as exc:
+    parser.error(f'--extra-body-json must be valid JSON: {exc}')
+if extra_body is not None and not isinstance(extra_body, dict):
+    parser.error('--extra-body-json must decode to a JSON object')
+
+try:
+    provider_config = ProviderConfig.from_env(
+        args.provider,
+        model=args.gpt_engine,
+        base_url=args.base_url,
+        api_key_env=args.api_key_env,
+        timeout=args.timeout,
+    )
+except ValueError as exc:
+    parser.error(str(exc))
+
+args.gpt_engine = provider_config.model
+client = ModelEngine(provider_config)
 
 alphabet_suffix = args.alphabet.replace(" ", "")
 effort_level = args.effort
@@ -65,25 +103,27 @@ for p in range(N_prob_types):
         print(prompt)
         # Get response
         response = ''
-        while len(response) == 0:
+        completion = None
+        for attempt in range(1, args.max_retries + 1):
             try:
-                if not args.gpt_engine.startswith('gpt-5'):
-                    completion = client.responses.create(
-                                    model=args.gpt_engine,
-                                    temperature=0,
-                                    top_p=0,
-                                    input=[{"role": "user", "content": prompt}]
-                                    )
-                else:
-                    completion = client.responses.create(
-                                    model=args.gpt_engine,
-                                    reasoning={"effort": effort_level},
-                                    input=[{"role": "user", "content": prompt}]
-                                    )
-                response = completion.output_text
+                result = client.generate(
+                    prompt,
+                    effort=effort_level,
+                    max_output_tokens=args.max_output_tokens,
+                    extra_body=extra_body,
+                )
+                response = result.text
+                completion = result.raw_response
+                if response:
+                    break
+                raise ValueError('Provider returned an empty final answer')
             except Exception as e:
-                print(f'Error: {e}. Trying again...')
-                time.sleep(5)
+                if attempt == args.max_retries:
+                    raise RuntimeError(
+                        f'API request failed after {args.max_retries} attempts'
+                    ) from e
+                print(f'Error: {e}. Retrying ({attempt}/{args.max_retries})...')
+                time.sleep(args.retry_delay)
         
         print(response)
         prob_type_responses.append(response)
@@ -92,15 +132,13 @@ for p in range(N_prob_types):
     all_prob_type_completions.append(prob_type_completions)
 
 avg_time = (time.time() - start_time) / (N_trials_per_prob_type * N_prob_types) # avg time/problem in seconds
-# Save results
-if not args.gpt_engine.startswith("gpt-5"):
-    if args.composite:
-        save_fname = './test_outputs_composite/' + args.gpt_engine + '_' + alphabet_suffix + '_int' + str(args.interval_size) + '_results.npz'
-    else:
-        save_fname = './test_outputs/' + args.gpt_engine + '_' + alphabet_suffix + '_int' + str(args.interval_size) + '_results.npz'
-else:
-    if args.composite:
-        save_fname = './test_outputs_composite/' + args.gpt_engine + '_' + effort_level + '_' + alphabet_suffix + '_int' + str(args.interval_size) + '_results.npz'
-    else:
-        save_fname = './test_outputs/' + args.gpt_engine + '_' + effort_level + '_' + alphabet_suffix + '_int' + str(args.interval_size) + '_results.npz'
+# Save results. Historical OpenAI names are preserved; provider model IDs containing
+# slashes/colons are made safe as a single filename component.
+output_dir = './test_outputs_composite' if args.composite else './test_outputs'
+os.makedirs(output_dir, exist_ok=True)
+model_label = result_model_label(args.provider, args.gpt_engine, effort_level)
+save_fname = os.path.join(
+    output_dir,
+    model_label + '_' + alphabet_suffix + '_int' + str(args.interval_size) + '_results.npz',
+)
 np.savez(save_fname, all_prob_type_responses=all_prob_type_responses, all_prob_type_completions=all_prob_type_completions, avg_time=avg_time)
