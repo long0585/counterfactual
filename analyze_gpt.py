@@ -156,7 +156,7 @@ overall_err = np.array([lower_err, upper_err])
 print('Overall accuracy = ' + str(overall_acc))
 # Save results
 if not args.gpt_engine.startswith("gpt-5"):
-    results_filename_npz = "acc_" + "_" + args.alphabet.replace(" ", "") + ".npz"
+    results_filename_npz = "acc" + "_" + args.alphabet.replace(" ", "") + ".npz"
 else:
     results_filename_npz = effort_level + "_" + args.alphabet.replace(" ", "") + ".npz"
 np.savez(results_dir + results_filename_npz, all_acc=all_acc, all_err=all_err, overall_acc=overall_acc, overall_err=overall_err, ind_trial_results=ind_trial_results, num_trials=N_trials_per_prob_type, avg_time=avg_time)

@@ -5,6 +5,11 @@ import argparse
 # Parse interval size
 parser = argparse.ArgumentParser()
 parser.add_argument('--interval_size', type=int, default=1, help='Interval size')
+# NOTE: for non-OpenAI models (e.g. the HF-routed Qwen/GLM/MiniMax/Kimi/DeepSeek
+# providers), pass the *sanitized* result_model_label used for the results
+# directories and the accompanying "<label>_alphabets.txt" file -- e.g.
+# "Qwen__Qwen3.8-27B__deepinfra_low" -- not the raw "--gpt_engine" value
+# (e.g. "Qwen/Qwen3.8-27B:deepinfra") given to test_gpt.py/analyze_gpt.py.
 parser.add_argument('--gpt_engine', type=str, default="gpt-4o", help='gpt engine')
 parser.add_argument('--effort', type=str)
 args = parser.parse_args()
@@ -68,7 +73,9 @@ gpt_err = [result['overall_err'][0] for result in gpt_results.values()]
 
 # Plot parameters
 total_bar_width = 0.8
-ind_bar_width = total_bar_width / 2
+series_names = list(gpt_results.keys())
+n_series = len(series_names)
+ind_bar_width = total_bar_width / n_series
 colors = ['powderblue', 'darkmagenta', 'salmon', 'mediumseagreen', 'royalblue']
 plot_fontsize = 14
 title_fontsize = 16
@@ -79,8 +86,13 @@ N_cond = 6
 x_points = np.arange(N_cond)
 # Interval size = 1
 ax = plt.subplot(111)
-plt.bar(x_points + (ind_bar_width * 1/2), gpt_results["FORWARD"]['all_acc'], yerr=gpt_results["FORWARD"]['all_err'], color=colors[0], edgecolor='black', width=ind_bar_width, ecolor='gray')
-plt.bar(x_points - (ind_bar_width * 1/2), gpt_results["RANDOM"]['all_acc'], yerr=gpt_results["RANDOM"]['all_err'], color=colors[1], edgecolor='black', width=ind_bar_width, ecolor='gray')
+# Plot one bar series per alphabet in the "_alphabets.txt" file (e.g. all of
+# FORWARD/BACKWARD/RANDOM), centered around each problem-type tick, instead
+# of hardcoding just FORWARD vs RANDOM.
+for i, name in enumerate(series_names):
+    offset = (i - (n_series - 1) / 2) * ind_bar_width
+    plt.bar(x_points + offset, gpt_results[name]['all_acc'], yerr=gpt_results[name]['all_err'],
+            color=colors[i % len(colors)], edgecolor='black', width=ind_bar_width, ecolor='gray')
 plt.ylim([0,1])
 plt.yticks([0,0.2,0.4,0.6,0.8,1],['0','0.2','0.4','0.6','0.8','1'], fontsize=plot_fontsize)
 plt.ylabel('Accuracy', fontsize=axis_label_fontsize)
@@ -90,16 +102,32 @@ if args.gpt_engine == 'gpt-4o':
     plt.title('GPT model: ' + args.gpt_engine + '\nInterval size = ' + str(args.interval_size) + '\n' + "Trials per problem type: " + str(N_trials_per_problem_type), fontsize=title_fontsize)
 elif args.gpt_engine.startswith('gpt-5'):
     plt.title('GPT model: ' + args.gpt_engine + '\nInterval size = ' + str(args.interval_size) + '\n' + "Effort: " + args.effort + '\n' + "Trials per problem type: " + str(N_trials_per_problem_type), fontsize=title_fontsize)
-plt.legend([name.lower() for name in gpt_results.keys()],fontsize=plot_fontsize,frameon=False, bbox_to_anchor=(1.1, 1))
+else:
+    # Non-OpenAI (e.g. HF-routed) models: same layout, but only show an
+    # "Effort" line when one was actually used (MiniMax omits --effort).
+    title = 'Model: ' + args.gpt_engine + '\nInterval size = ' + str(args.interval_size)
+    if args.effort:
+        title += '\n' + "Effort: " + args.effort
+    title += '\n' + "Trials per problem type: " + str(N_trials_per_problem_type)
+    plt.title(title, fontsize=title_fontsize)
+# Label the legend from the same series (and in the same order) actually
+# plotted above, so it never drifts out of sync with the bars.
+plt.legend([name.lower() for name in series_names],fontsize=plot_fontsize,frameon=False, bbox_to_anchor=(1.1, 1))
 hide_top_right(ax)
 if args.interval_size == 1:
     if args.gpt_engine.startswith('gpt-5'):
         plt.savefig('./' + args.gpt_engine + '_int1_' + args.effort + '_combined_results.png', dpi=300, bbox_inches="tight")
     elif args.gpt_engine == 'gpt-4o':
         plt.savefig('./gpt4o_int1_combined_results.png', dpi=300, bbox_inches="tight")
+    else:
+        suffix = ('_' + args.effort) if args.effort else ''
+        plt.savefig('./' + args.gpt_engine + '_int1' + suffix + '_combined_results.png', dpi=300, bbox_inches="tight")
 elif args.interval_size == 2:
     if args.gpt_engine.startswith('gpt-5'):
         plt.savefig('./' + args.gpt_engine + '_int2_' + args.effort + '_combined_results.png', dpi=300, bbox_inches="tight")
     elif args.gpt_engine == 'gpt-4o':
         plt.savefig('./gpt4o_int2_combined_results.png', dpi=300, bbox_inches="tight")
+    else:
+        suffix = ('_' + args.effort) if args.effort else ''
+        plt.savefig('./' + args.gpt_engine + '_int2' + suffix + '_combined_results.png', dpi=300, bbox_inches="tight")
 plt.close()
