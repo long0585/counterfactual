@@ -38,6 +38,7 @@ def _hf_profile(
     name: str,
     model_id: str,
     *,
+    api_style: ApiStyle = "responses",
     reasoning_style: ReasoningStyle = "responses",
     supported_efforts: tuple[str, ...] | None = None,
 ) -> ProviderProfile:
@@ -45,13 +46,13 @@ def _hf_profile(
 
     return ProviderProfile(
         name=name,
-        api_style="responses",
+        api_style=api_style,
         api_key_env=HF_API_KEY_ENV,
         base_url_env=HF_BASE_URL_ENV,
         default_base_url=HF_ROUTER_BASE_URL,
         default_model=f"{model_id}:{HF_DEFAULT_INFERENCE_PROVIDER}",
         reasoning_style=reasoning_style,
-        max_tokens_parameter="max_output_tokens",
+        max_tokens_parameter="max_output_tokens" if api_style == "responses" else "max_tokens",
         fixed_sampling=True,
         supported_efforts=supported_efforts,
     )
@@ -88,6 +89,8 @@ PROVIDER_PROFILES: dict[str, ProviderProfile] = {
     "deepseek": _hf_profile(
         "deepseek",
         "deepseek-ai/DeepSeek-V4-Pro",
+        api_style="chat",
+        reasoning_style="chat",
         supported_efforts=("low", "high", "max"),
     ),
     "huggingface": _hf_profile("huggingface", "Qwen/Qwen3.8-27B"),

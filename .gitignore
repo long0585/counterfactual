@@ -4,3 +4,9 @@ test_old.py
 .venv/
 *.pyc
 __pycache__/
+Long_Parhi_Analogical_Reasoning_Benchmark.aux
+Long_Parhi_Analogical_Reasoning_Benchmark.log
+Long_Parhi_Analogical_Reasoning_Benchmark.out
+Long_Parhi_Analogical_Reasoning_Benchmark.pdf
+Long_Parhi_Analogical_Reasoning_Benchmark.tex
+logs/

@@ -4,7 +4,13 @@ import json
 import os
 import time
 
-from engine import ModelEngine, PROVIDER_PROFILES, ProviderConfig, result_model_label
+from engine import (
+    ModelEngine,
+    PROVIDER_PROFILES,
+    ProviderConfig,
+    diagnose_empty_response,
+    result_model_label,
+)
 
 # Settings
 parser = argparse.ArgumentParser()
@@ -27,7 +33,7 @@ parser.add_argument('--timeout', type=float, default=120.0, help='API timeout in
 parser.add_argument('--max_retries', '--max-retries', dest='max_retries', type=int, default=3,
                     help='Maximum attempts per puzzle (default: 3)')
 parser.add_argument('--retry_delay', '--retry-delay', dest='retry_delay', type=float, default=5.0,
-                    help='Seconds between attempts')
+                    help='Base seconds between attempts; doubles after each failed attempt (exponential backoff)')
 parser.add_argument('--trials', type=int, default=10, help='Number of trials')
 parser.add_argument('--composite', action='store_true', default=False)
 args = parser.parse_args()
@@ -81,16 +87,64 @@ N_prob_types = len(prob_types)
 custom_alphabet = args.alphabet
 alphabet_prompt = "Let’s solve a puzzle problem involving the following fictional alphabet:\n\n[" + custom_alphabet + "]\n\nHere is the problem:\n\n"
 
-# Evaluate
+# Resolve the output path up front (it doesn't depend on run results) so it
+# can also be used for a checkpoint file. A full sweep is hundreds of real
+# API calls to providers that occasionally return transient errors (e.g. a
+# 504 Gateway Timeout) -- without checkpointing, a failure near the end of a
+# 100-trial run would force redoing every trial from scratch.
+output_dir = './test_outputs_composite' if args.composite else './test_outputs'
+os.makedirs(output_dir, exist_ok=True)
+model_label = result_model_label(args.provider, args.gpt_engine, effort_level)
+save_fname = os.path.join(
+    output_dir,
+    model_label + '_' + alphabet_suffix + '_int' + str(args.interval_size) + '_results.npz',
+)
+checkpoint_fname = save_fname + '.checkpoint.npz'
+
 N_trials_per_prob_type = args.trials
 all_prob_type_responses = []
 all_prob_type_completions = []
-start_time = time.time()
+elapsed_seconds = 0.0
+
+if os.path.exists(checkpoint_fname):
+    ckpt = np.load(checkpoint_fname, allow_pickle=True)
+    all_prob_type_responses = [list(r) for r in ckpt['all_prob_type_responses']]
+    all_prob_type_completions = [list(c) for c in ckpt['all_prob_type_completions']]
+    elapsed_seconds = float(ckpt['elapsed_seconds'])
+    N_done = sum(1 for r in all_prob_type_responses if len(r) >= N_trials_per_prob_type)
+    print(f'Resuming from checkpoint {checkpoint_fname}: '
+          f'{N_done} of {N_prob_types} problem type(s) already complete.')
+
+
+def save_checkpoint():
+    resp_arr = np.empty(len(all_prob_type_responses), dtype=object)
+    for i, lst in enumerate(all_prob_type_responses):
+        resp_arr[i] = lst
+    comp_arr = np.empty(len(all_prob_type_completions), dtype=object)
+    for i, lst in enumerate(all_prob_type_completions):
+        comp_arr[i] = lst
+    np.savez(checkpoint_fname, all_prob_type_responses=resp_arr,
+              all_prob_type_completions=comp_arr, elapsed_seconds=elapsed_seconds)
+
+
+# Evaluate
 for p in range(N_prob_types):
+    if p < len(all_prob_type_responses):
+        prob_type_responses = all_prob_type_responses[p]
+        prob_type_completions = all_prob_type_completions[p]
+    else:
+        prob_type_responses = []
+        prob_type_completions = []
+        all_prob_type_responses.append(prob_type_responses)
+        all_prob_type_completions.append(prob_type_completions)
+
+    if len(prob_type_responses) >= N_trials_per_prob_type:
+        print('Problem type ' + str(p+1) + ' of ' + str(N_prob_types) + ' already complete (checkpoint) -- skipping.')
+        continue
+
     print('Problem type ' + str(p+1) + ' of ' + str(N_prob_types) + '...')
-    prob_type_responses = []
-    prob_type_completions = []
-    for t in range(N_trials_per_prob_type):
+    for t in range(len(prob_type_responses), N_trials_per_prob_type):
+        trial_start = time.time()
         print('Trial ' + str(t+1) + ' of ' + str(N_trials_per_prob_type) + '...')
         # Generate prompt
         prob = all_prob.item()[prob_types[p]]['prob'][t]
@@ -104,6 +158,7 @@ for p in range(N_prob_types):
         # Get response
         response = ''
         completion = None
+        delay = args.retry_delay
         for attempt in range(1, args.max_retries + 1):
             try:
                 result = client.generate(
@@ -116,29 +171,30 @@ for p in range(N_prob_types):
                 completion = result.raw_response
                 if response:
                     break
-                raise ValueError('Provider returned an empty final answer')
+                raise ValueError(
+                    'Provider returned an empty final answer'
+                    + diagnose_empty_response(completion)
+                )
             except Exception as e:
                 if attempt == args.max_retries:
                     raise RuntimeError(
                         f'API request failed after {args.max_retries} attempts'
                     ) from e
-                print(f'Error: {e}. Retrying ({attempt}/{args.max_retries})...')
-                time.sleep(args.retry_delay)
-        
+                print(f'Error: {e}. Retrying ({attempt}/{args.max_retries}) in {delay:.0f}s...')
+                time.sleep(delay)
+                delay *= 2  # exponential backoff
+
         print(response)
         prob_type_responses.append(response)
         prob_type_completions.append(completion)
-    all_prob_type_responses.append(prob_type_responses)
-    all_prob_type_completions.append(prob_type_completions)
+        elapsed_seconds += time.time() - trial_start
+        # Persist progress after every trial so a later failure (this run or a
+        # future retry of the same command) only has to redo what's left.
+        save_checkpoint()
 
-avg_time = (time.time() - start_time) / (N_trials_per_prob_type * N_prob_types) # avg time/problem in seconds
+avg_time = elapsed_seconds / (N_trials_per_prob_type * N_prob_types)  # avg time/problem in seconds
 # Save results. Historical OpenAI names are preserved; provider model IDs containing
 # slashes/colons are made safe as a single filename component.
-output_dir = './test_outputs_composite' if args.composite else './test_outputs'
-os.makedirs(output_dir, exist_ok=True)
-model_label = result_model_label(args.provider, args.gpt_engine, effort_level)
-save_fname = os.path.join(
-    output_dir,
-    model_label + '_' + alphabet_suffix + '_int' + str(args.interval_size) + '_results.npz',
-)
 np.savez(save_fname, all_prob_type_responses=all_prob_type_responses, all_prob_type_completions=all_prob_type_completions, avg_time=avg_time)
+if os.path.exists(checkpoint_fname):
+    os.remove(checkpoint_fname)

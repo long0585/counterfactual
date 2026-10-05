@@ -1,0 +1,4 @@
+FORWARD
+a b c d e f g h i j k l m n o p q r s t u v w x y z
+RANDOM
+x y l k w b f z t n j r q a h v g m u o p d i c s e

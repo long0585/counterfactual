@@ -190,6 +190,42 @@ def _extract_responses_reasoning(response: Any) -> str | None:
     return "\n".join(texts) or None
 
 
+def diagnose_empty_response(raw_response: Any) -> str:
+    """Best-effort diagnostic suffix for why a call produced no final answer text.
+
+    Empty output isn't always a transient network blip -- it can also be a
+    model/provider consistently truncating before emitting an answer (e.g.
+    hitting a token limit mid-reasoning). Surfacing status/finish_reason and
+    the shape of the response here means the next failure log actually says
+    *why* it was empty instead of just that it was, so a persistent,
+    non-transient failure doesn't have to be diagnosed blind.
+    """
+
+    parts: list[str] = []
+
+    status = _get_field(raw_response, "status")
+    if status:
+        parts.append(f"status={status}")
+
+    incomplete = _get_field(raw_response, "incomplete_details")
+    reason = _get_field(incomplete, "reason") if incomplete is not None else None
+    if reason:
+        parts.append(f"incomplete_reason={reason}")
+
+    output = _get_field(raw_response, "output")
+    if output is not None:
+        types = [str(_get_field(item, "type")) for item in output]
+        parts.append(f"output_item_types={types}")
+
+    choices = _get_field(raw_response, "choices") or []
+    if choices:
+        finish_reason = _get_field(choices[0], "finish_reason")
+        if finish_reason:
+            parts.append(f"finish_reason={finish_reason}")
+
+    return " (" + ", ".join(parts) + ")" if parts else ""
+
+
 def _deep_update(target: dict[str, Any], update: dict[str, Any]) -> None:
     for key, value in update.items():
         if isinstance(value, Mapping) and isinstance(target.get(key), dict):
